@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Health Log</title>
+<link href="Daily Health Log.css" rel="stylesheet">
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1>Daily Health Log</h1>
+    <p class="sub">Track water, sleep, activity, mood and habits.</p>
+  </div>
+  <div class="datenav">
+    <button id="prev" aria-label="Previous day">Prev</button>
+    <strong id="dateLabel"></strong>
+    <button id="next" aria-label="Next day">Next</button>
+    <button id="today">Today</button>
+  </div>
+</header>
+
+<div class="grid">
+  <section class="panel">
+    <h2>Today's progress</h2>
+    <div class="metric"><div class="metric-top"><span>Water</span><span id="tWater"></span></div><div class="track"><div class="fill" id="bWater"></div></div></div>
+    <div class="metric"><div class="metric-top"><span>Sleep</span><span id="tSleep"></span></div><div class="track"><div class="fill" id="bSleep"></div></div></div>
+    <div class="metric"><div class="metric-top"><span>Steps</span><span id="tSteps"></span></div><div class="track"><div class="fill" id="bSteps"></div></div></div>
+    <div class="metric" style="margin-bottom:0"><div class="metric-top"><span>Habits done</span><span id="tHabits"></span></div><div class="track"><div class="fill" id="bHabits"></div></div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Log entry</h2>
+    <label>Water (glasses)</label>
+    <div class="water">
+      <button id="wMinus" aria-label="Remove a glass">-</button>
+      <span class="count" id="wCount">0</span>
+      <button id="wPlus" class="primary" aria-label="Add a glass">+</button>
+    </div>
+    <div class="row">
+      <div><label for="sleep">Sleep (hours)</label><input id="sleep" type="number" min="0" max="24" step="0.25"></div>
+      <div><label for="steps">Steps</label><input id="steps" type="number" min="0" step="100"></div>
+    </div>
+    <div class="row" style="margin-bottom:0">
+      <div><label for="mood">Mood</label>
+        <select id="mood">
+          <option value="">Not set</option>
+          <option value="1">Very low</option>
+          <option value="2">Low</option>
+          <option value="3">Okay</option>
+          <option value="4">Good</option>
+          <option value="5">Very good</option>
+        </select>
+      </div>
+      <div><label for="weight">Weight (kg)</label><input id="weight" type="number" min="0" step="0.1"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Daily habits</h2>
+    <div id="habits"></div>
+    <div class="add">
+      <input id="newHabit" type="text" placeholder="Add a habit" maxlength="60" aria-label="New habit">
+      <button id="addHabit" class="primary">Add</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Notes</h2>
+    <label for="notes">Symptoms, meals, how the day went</label>
+    <textarea id="notes"></textarea>
+  </section>
+</div>
+</main>
+
+<script>
+(function(){
+  var KEY='dailyHealthLog.v1';
+  var GOALS={water:8,sleep:8,steps:8000};
+  var state=load();
+  var current=todayStr();
+
+  function load(){
+    var def={habits:[{id:'h1',name:'Take medication or vitamins'},{id:'h2',name:'Stretch or exercise'},{id:'h3',name:'Eat vegetables or fruit'}],days:{}};
+    try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(p&&p.habits&&p.days)return p;}}catch(e){}
+    return def;
+  }
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+  function pad(n){return n<10?'0'+n:''+n}
+  function fmt(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  function todayStr(){return fmt(new Date())}
+  function parse(s){var a=s.split('-');return new Date(+a[0],+a[1]-1,+a[2])}
+  function shift(s,n){var d=parse(s);d.setDate(d.getDate()+n);return fmt(d)}
+  function day(s){if(!state.days[s])state.days[s]={water:0,sleep:'',steps:'',mood:'',weight:'',notes:'',done:[]};return state.days[s]}
+  function $(id){return document.getElementById(id)}
+  function pct(v,g){v=parseFloat(v);if(!v||!g)return 0;return Math.min(100,Math.round(v/g*100))}
+  function esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML}
+
+  function render(){
+    var d=day(current);
+    var label=parse(current).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    $('dateLabel').textContent=label+(current===todayStr()?' (today)':'');
+    $('next').disabled=current>=todayStr();
+    $('wCount').textContent=d.water;
+    $('sleep').value=d.sleep;$('steps').value=d.steps;$('weight').value=d.weight;$('notes').value=d.notes;
+    $('mood').value=d.mood;
+    renderHabits(d);renderProgress(d);
+  }
+
+  function renderHabits(d){
+    var box=$('habits');
+    if(!state.habits.length){box.innerHTML='<p class="sub">No habits yet. Add one below.</p>';return}
+    box.innerHTML=state.habits.map(function(h){
+      var on=d.done.indexOf(h.id)>-1;
+      return '<div class="habit"><input type="checkbox" id="c_'+h.id+'" data-id="'+h.id+'"'+(on?' checked':'')+'><span><label for="c_'+h.id+'">'+esc(h.name)+'</label></span><button class="link" data-del="'+h.id+'" aria-label="Remove '+esc(h.name)+'">Remove</button></div>';
+    }).join('');
+  }
+
+  function renderProgress(d){
+    var hd=state.habits.length,done=d.done.filter(function(id){return state.habits.some(function(h){return h.id===id})}).length;
+    $('tWater').textContent=d.water+' of '+GOALS.water+' glasses';
+    $('tSleep').textContent=(d.sleep!==''?d.sleep:0)+' of '+GOALS.sleep+' hours';
+    $('tSteps').textContent=(d.steps!==''?Number(d.steps).toLocaleString():0)+' of '+GOALS.steps.toLocaleString();
+    $('tHabits').textContent=done+' of '+hd;
+    $('bWater').style.width=pct(d.water,GOALS.water)+'%';
+    $('bSleep').style.width=pct(d.sleep,GOALS.sleep)+'%';
+    $('bSteps').style.width=pct(d.steps,GOALS.steps)+'%';
+    $('bHabits').style.width=pct(done,hd)+'%';
+  }
+
+  function update(fn){fn(day(current));save();renderProgress(day(current))}
+
+  $('wPlus').onclick=function(){update(function(d){d.water=d.water+1});$('wCount').textContent=day(current).water};
+  $('wMinus').onclick=function(){update(function(d){d.water=Math.max(0,d.water-1)});$('wCount').textContent=day(current).water};
+  ['sleep','steps','weight'].forEach(function(id){$(id).oninput=function(){var v=this.value;update(function(d){d[id]=v})}});
+  $('mood').onchange=function(){var v=this.value;update(function(d){d.mood=v})};
+  $('notes').oninput=function(){var v=this.value;update(function(d){d.notes=v})};
+
+  $('habits').onchange=function(e){
+    var id=e.target.getAttribute('data-id');if(!id)return;
+    var on=e.target.checked;
+    update(function(d){var i=d.done.indexOf(id);if(on&&i<0)d.done.push(id);if(!on&&i>-1)d.done.splice(i,1)});
+  };
+  $('habits').onclick=function(e){
+    var id=e.target.getAttribute('data-del');if(!id)return;
+    if(!confirm('Remove this habit?'))return;
+    state.habits=state.habits.filter(function(h){return h.id!==id});save();render();
+  };
+  function addHabit(){
+    var v=$('newHabit').value.trim();if(!v)return;
+    state.habits.push({id:'h'+Date.now(),name:v});$('newHabit').value='';save();render();
+  }
+  $('addHabit').onclick=addHabit;
+  $('newHabit').onkeydown=function(e){if(e.key==='Enter')addHabit()};
+
+  $('prev').onclick=function(){current=shift(current,-1);render()};
+  $('next').onclick=function(){if(current<todayStr()){current=shift(current,1);render()}};
+  $('today').onclick=function(){current=todayStr();render()};
+
+  render();
+})();
+</script>
+</body>
+</html>
